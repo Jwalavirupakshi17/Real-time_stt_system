@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RealTime STT - Streaming Whisper</title>
+    <!-- React & Babel CDNs -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Google Fonts -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap">
+    
+    <style>
+        /* CSS Variables & Base Styles (Copied from App.css) */
+        :root {
+            --bg-primary: #0a0e1a;
+            --bg-secondary: #111827;
+            --bg-card: rgba(17, 24, 39, 0.7);
+            --bg-card-hover: rgba(17, 24, 39, 0.85);
+
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+
+            --accent-blue: #3b82f6;
+            --accent-cyan: #22d3ee;
+            --accent-violet: #8b5cf6;
+            --accent-rose: #f43f5e;
+            --accent-emerald: #10b981;
+            --accent-amber: #f59e0b;
+
+            --gradient-primary: linear-gradient(135deg, var(--accent-blue), var(--accent-violet));
+            --gradient-recording: linear-gradient(135deg, var(--accent-rose), var(--accent-amber));
+
+            --border-subtle: rgba(148, 163, 184, 0.1);
+            --border-glow: rgba(59, 130, 246, 0.3);
+
+            --radius-md: 12px;
+            --radius-lg: 16px;
+            --radius-full: 9999px;
+
+            --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
+            --shadow-glow: 0 0 40px rgba(59, 130, 246, 0.15);
+
+            --font-family: 'Inter', -apple-system, sans-serif;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: var(--font-family);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+        }
+
+        .bg-gradient {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: radial-gradient(ellipse at 20% 20%, rgba(59, 130, 246, 0.08), transparent 50%),
+                        radial-gradient(ellipse at 80% 80%, rgba(139, 92, 246, 0.06), transparent 50%);
+            z-index: 0;
+        }
+
+        .container {
+            position: relative;
+            z-index: 1;
+            width: 100%;
+            max-width: 760px;
+            padding: 2rem 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .header { text-align: center; }
+        .logo { display: flex; align-items: center; justify-content: center; gap: 0.75rem; }
+        .logo-icon {
+            width: 40px; height: 40px; background: var(--gradient-primary);
+            border-radius: 8px; display: flex; align-items: center; justify-content: center;
+            color: white;
+        }
+        .logo h1 { font-size: 1.8rem; background: var(--gradient-primary); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        .subtitle { color: var(--text-secondary); font-size: 0.9rem; margin-top: 0.5rem; }
+
+        .status-bar { display: flex; justify-content: center; gap: 0.75rem; }
+        .status-chip {
+            padding: 0.3rem 0.8rem; background: var(--bg-card); border-radius: 20px;
+            font-size: 0.75rem; display: flex; align-items: center; gap: 0.5rem; border: 1px solid var(--border-subtle);
+        }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; }
+        .connected .status-dot { background: var(--accent-emerald); box-shadow: 0 0 8px var(--accent-emerald); }
+        .disconnected .status-dot { background: var(--text-muted); }
+        .recording .status-dot { background: var(--accent-rose); animation: pulse 1.5s infinite; }
+
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+
+        .controls { display: flex; justify-content: center; gap: 1rem; }
+        .btn {
+            padding: 0.7rem 1.4rem; border-radius: 25px; border: none; font-weight: 600; cursor: pointer;
+            display: flex; align-items: center; gap: 0.5rem; transition: 0.2s;
+        }
+        .btn-start { background: var(--gradient-primary); color: white; }
+        .btn-stop { background: var(--gradient-recording); color: white; }
+        .btn-reset { background: var(--bg-card); color: var(--text-secondary); border: 1px solid var(--border-subtle); }
+
+        .transcription-panel {
+            background: var(--bg-card); border-radius: var(--radius-lg); border: 1px solid var(--border-subtle);
+            backdrop-filter: blur(10px); min-height: 200px; padding: 1.25rem;
+        }
+        .panel-header { display: flex; justify-content: space-between; margin-bottom: 1rem; color: var(--text-secondary); font-size: 0.85rem; }
+        .transcript-text { font-size: 1.1rem; line-height: 1.6; }
+        .full-text { color: var(--text-secondary); border-left: 2px solid var(--border-subtle); padding-left: 10px; margin-bottom: 10px; }
+        .partial-text { color: var(--accent-cyan); border-left: 2px solid var(--accent-cyan); padding-left: 10px; }
+
+        .error-banner {
+            padding: 0.8rem; background: rgba(244, 63, 94, 0.1); border: 1px solid rgba(244, 63, 94, 0.2);
+            border-radius: 8px; color: #fda4af; text-align: center; font-size: 0.85rem;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useCallback } = React;
+
+        const getWsUrl = (host) => `ws://${host}:8001/ws/transcribe`;
+
+        function App() {
+            const [isRecording, setIsRecording] = useState(false);
+            const [isConnected, setIsConnected] = useState(false);
+            const [partialText, setPartialText] = useState('');
+            const [fullText, setFullText] = useState('');
+            const [error, setError] = useState(null);
+            const [log, setLog] = useState([]);
+            
+            const wsRef = useRef(null);
+            const mediaRecorderRef = useRef(null);
+            const streamRef = useRef(null);
+
+            const addLog = (msg) => {
+                console.log(`[LOG] ${msg}`);
+                setLog(prev => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev].slice(0, 12));
+            };
+
+            const connectWithRetry = useCallback(async (hosts) => {
+                for (const host of hosts) {
+                    try {
+                        const url = getWsUrl(host);
+                        addLog(`Trying ${url}...`);
+                        const ws = await new Promise((resolve, reject) => {
+                            try {
+                                const socket = new WebSocket(url);
+                                const timeout = setTimeout(() => {
+                                    if (socket.readyState !== WebSocket.OPEN) {
+                                        socket.close();
+                                        reject(new Error("Timeout (3s)"));
+                                    }
+                                }, 3000);
+
+                                socket.onopen = () => {
+                                    clearTimeout(timeout);
+                                    resolve(socket);
+                                };
+                                socket.onerror = (err) => {
+                                    clearTimeout(timeout);
+                                    reject(new Error("Browser-level connection error (CORS/Network/Firewall)"));
+                                };
+                            } catch (e) {
+                                reject(e);
+                            }
+                        });
+
+                        wsRef.current = ws;
+                        ws.onmessage = (event) => {
+                            const data = JSON.parse(event.data);
+                            if (data.type === 'connected') {
+                                addLog("HANDSHAKE SUCCESSFUL!");
+                                setIsConnected(true);
+                                setError(null);
+                            }
+                            if (data.type === 'transcription' || data.type === 'final') {
+                                if (data.partial !== undefined) setPartialText(data.partial);
+                                if (data.full !== undefined) setFullText(data.full);
+                            }
+                            if (data.type === 'error') {
+                                setError(data.message);
+                                addLog(`SERVER ERROR: ${data.message}`);
+                            }
+                        };
+                        ws.onclose = (event) => {
+                            setIsConnected(false);
+                            addLog(`Connection Closed (Code: ${event.code})`);
+                        };
+                        return true;
+                    } catch (e) {
+                        addLog(`FAILED (${host}): ${e.message}`);
+                    }
+                }
+                return false;
+            }, []);
+
+            const initConnection = useCallback(async () => {
+                const results = await connectWithRetry(['localhost', '127.0.0.1', window.location.hostname]);
+                if (!results) {
+                    setError("All connection attempts failed. Please ensure the Python server is running on port 8000.");
+                }
+            }, [connectWithRetry]);
+
+            // Connect on mount
+            useEffect(() => {
+                initConnection();
+            }, [initConnection]);
+
+            const startRecording = async () => {
+                try {
+                    if (!isConnected) {
+                        await connectWebSocket();
+                    }
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    streamRef.current = stream;
+
+                    const mediaRecorder = new MediaRecorder(stream);
+                    mediaRecorderRef.current = mediaRecorder;
+
+                    mediaRecorder.ondataavailable = (e) => {
+                        if (e.data.size > 0 && wsRef.current?.readyState === WebSocket.OPEN) {
+                            wsRef.current.send(e.data);
+                        }
+                    };
+
+                    mediaRecorder.start(500);
+                    setIsRecording(true);
+                } catch (e) {
+                    setError("Microphone access denied or connection failed.");
+                }
+            };
+
+            const stopRecording = () => {
+                if (wsRef.current?.readyState === WebSocket.OPEN) {
+                    wsRef.current.send(JSON.stringify({ action: 'stop' }));
+                }
+                mediaRecorderRef.current?.stop();
+                streamRef.current?.getTracks().forEach(t => t.stop());
+                setIsRecording(false);
+                setTimeout(() => wsRef.current?.close(), 1000);
+            };
+
+            const reset = () => {
+                setFullText(''); setPartialText('');
+                if (wsRef.current?.readyState === WebSocket.OPEN) {
+                    wsRef.current.send(JSON.stringify({ action: 'reset' }));
+                }
+            };
+
+            return (
+                <div className="container">
+                    <div className="bg-gradient"></div>
+                    <header className="header">
+                        <div className="logo">
+                            <div className="logo-icon">🎤</div>
+                            <h1>RealTime STT</h1>
+                        </div>
+                        <p className="subtitle">Standalone Preview Mode (CDN Based)</p>
+                    </header>
+
+                    <div className="status-bar">
+                        <div className={`status-chip ${isConnected ? 'connected' : 'disconnected'}`}>
+                            <span className="status-dot"></span>
+                            {isConnected ? 'Server Connected' : 'Server Offline'}
+                        </div>
+                        {isRecording && (
+                            <div className="status-chip recording">
+                                <span className="status-dot"></span>
+                                Recording Live
+                            </div>
+                        )}
+                    </div>
+
+                    {error && <div className="error-banner">{error}</div>}
+
+                    <div className="controls">
+                        {!isRecording ? (
+                            <button className="btn btn-start" onClick={startRecording}>Start Recording</button>
+                        ) : (
+                            <button className="btn btn-stop" onClick={stopRecording}>Stop Recording</button>
+                        )}
+                        <button className="btn btn-reset" onClick={reset}>Clear</button>
+                    </div>
+
+                    <div className="transcription-panel">
+                        <div className="panel-header">
+                            <span>Live Transcription Output</span>
+                            {isRecording && <span style={{color: 'var(--accent-rose)'}}>• LIVE</span>}
+                        </div>
+                        <div className="transcript-text">
+                            {fullText && <div className="full-text">{fullText}</div>}
+                            {partialText && <div className="partial-text">{partialText}</div>}
+                            {!fullText && !partialText && <div style={{color: 'var(--text-muted)', fontStyle: 'italic'}}>Click Start to begin...</div>}
+                        </div>
+                    </div>
+
+                    {/* Connection Logs for Debugging */}
+                    <div style={{ marginTop: '1rem', padding: '1rem', background: 'rgba(0,0,0,0.3)', borderRadius: '8px', fontSize: '0.75rem', fontFamily: 'monospace', border: '1px solid var(--border-subtle)' }}>
+                        <div style={{ marginBottom: '0.5rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Connection Logs:</div>
+                        {log.map((l, i) => (
+                            <div key={i} style={{ color: i === 0 ? 'var(--accent-cyan)' : 'var(--text-muted)', marginBottom: '2px' }}>
+                                > {l}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
